@@ -1,0 +1,13 @@
+cases/
+input/*
+!input/.gitkeep
+config.local.json
+__pycache__/
+*.pyc
+.env
+*.pdf
+*.docx
+*.hwp
+*.hwpx
+.DS_Store
+chat/

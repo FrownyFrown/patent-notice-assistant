@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "conclusions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "refuse_draft",
+              "hold",
+              "no_reason_found"
+            ]
+          },
+          "doc_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "primary_doc_id": {
+            "type": "string"
+          },
+          "common_claim_text": {
+            "type": "string"
+          },
+          "common_cited_text": {
+            "type": "string"
+          },
+          "common_paragraphs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "differences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "component_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "text": {
+                  "type": "string"
+                },
+                "basis": {
+                  "type": "string",
+                  "enum": [
+                    "other_reference",
+                    "well_known",
+                    "design_choice"
+                  ]
+                },
+                "doc_id": {
+                  "type": "string"
+                },
+                "paragraphs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {},
+                      "required": [],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "has_evidence": {
+                          "type": "boolean"
+                        },
+                        "detail": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "has_evidence",
+                        "detail"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "condition_1": {
+                          "type": "string"
+                        },
+                        "condition_2": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "condition_1",
+                        "condition_2"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "component_ids",
+                "text",
+                "basis",
+                "doc_id",
+                "paragraphs",
+                "reason",
+                "evidence"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "motivation": {
+            "type": "string"
+          },
+          "effect_review": {
+            "type": "string"
+          },
+          "weak_point": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim",
+          "verdict",
+          "doc_ids",
+          "primary_doc_id",
+          "common_claim_text",
+          "common_cited_text",
+          "common_paragraphs",
+          "differences",
+          "motivation",
+          "effect_review",
+          "weak_point"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "description_notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim",
+          "text",
+          "quote"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "conclusions",
+    "description_notes"
+  ],
+  "additionalProperties": false
+}
