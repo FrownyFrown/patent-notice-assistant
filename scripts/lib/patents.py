@@ -1,5 +1,6 @@
 """공개 공보를 제한된 주소에서 읽고 원문 단락으로 저장한다."""
 import json
+import hashlib
 import os
 import re
 import tempfile
@@ -191,27 +192,61 @@ def _atomic(path, value):
             temp.unlink()
 
 
+def _index(cache_dir):
+    try:
+        value = json.loads((Path(cache_dir) / '.index.json').read_bytes())
+        if not isinstance(value, dict) or any(not isinstance(v, str) or not re.fullmatch(r'[0-9a-f]{64}', v) for v in value.values()):
+            return {}
+        return value
+    except (OSError, ValueError):
+        return {}
+
+
+def read_document(cache_dir, doc_id):
+    doc_id = normalize(doc_id)
+    try:
+        path = Path(cache_dir) / (doc_id + '.json')
+        with path.open('rb') as f:
+            data = f.read(20_000_001)
+        if len(data) > 20_000_000 or _index(cache_dir).get(doc_id) != hashlib.sha256(data).hexdigest():
+            return None
+        def unique(pairs):
+            value = {}
+            for k, v in pairs:
+                if k in value:
+                    raise ValueError('중복 항목입니다.')
+                value[k] = v
+            return value
+        value = json.loads(data, object_pairs_hook=unique)
+        if value['doc_id'] != doc_id or not isinstance(value['paragraphs'], list) or not all(k in value for k in ('title','publication_date','url','numbered','machine_translated','origin','claims')):
+            return None
+        return value
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def store_document(cache_dir, doc):
+    from .state import atomic
+    cache_dir = Path(cache_dir)
+    doc_id = normalize(doc['doc_id'])
+    data = (json.dumps(doc, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+    atomic(cache_dir / (doc_id + '.json'), data)
+    index = _index(cache_dir)
+    # 모델이 목록까지 고치면 변조를 막을 수 없다.
+    index[doc_id] = hashlib.sha256(data).hexdigest()
+    atomic(cache_dir / '.index.json', json.dumps(index))
+
+
 def fetch(doc_id, cache_dir: Path, opener=None, sleep=time.sleep, min_interval=2.0):
     doc_id = normalize(doc_id)
     if not isinstance(min_interval, (int, float)) or min_interval < 0 or not min_interval < float('inf'):
         raise PatentError('network', '요청 간격을 확인해 주세요.')
     cache_dir = Path(cache_dir)
-    cache = cache_dir / (doc_id+'.json')
     lock = cache_dir / '.request.lock'
     locked = False
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        def cached():
-            if not cache.exists():
-                return None
-            try:
-                value = json.loads(cache.read_text(encoding='utf-8'))
-                if value['doc_id'] != doc_id or not isinstance(value['paragraphs'], list) or not all(k in value for k in ('title','publication_date','url','numbered','machine_translated','origin','claims')):
-                    raise ValueError()
-                return value
-            except (ValueError, KeyError, TypeError) as exc:
-                raise PatentError('network', '공보 캐시가 손상되었습니다. 해당 캐시를 확인해 주세요.') from exc
-        value = cached()
+        value = read_document(cache_dir, doc_id)
         if value is not None:
             return value
         deadline = time.monotonic()+30
@@ -231,7 +266,7 @@ def fetch(doc_id, cache_dir: Path, opener=None, sleep=time.sleep, min_interval=2
                 if time.monotonic() >= deadline:
                     raise PatentError('network', '다른 공보 요청이 끝나지 않았습니다. 잠금 파일을 확인해 주세요.')
                 sleep(0.1)
-        value = cached()
+        value = read_document(cache_dir, doc_id)
         if value is not None:
             return value
         stamp = cache_dir / '.request-time.json'
@@ -274,7 +309,7 @@ def fetch(doc_id, cache_dir: Path, opener=None, sleep=time.sleep, min_interval=2
         if not parser.paragraphs:
             raise PatentError('no_text', '공보 본문을 찾지 못했습니다. PDF 또는 TXT를 넣어 주세요.')
         doc = _doc(doc_id, parser.title, parser.publication, parser.paragraphs, parser.claims, 'web_search')
-        _atomic(cache, doc)
+        store_document(cache_dir, doc)
         return doc
     except PatentError:
         raise

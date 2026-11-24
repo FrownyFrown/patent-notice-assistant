@@ -1,4 +1,7 @@
 import io
+import json
+import hashlib
+from tests.doc_helper import write_doc
 import sys
 import tempfile
 import unittest
@@ -102,7 +105,7 @@ class PatentTest(unittest.TestCase):
             self.assertFalse((cache/'.request.lock').exists())
             (cache/'KR20230000001A.json').write_text('{}')
             with self.assertRaises(patents.PatentError) as c:
-                patents.fetch('KR20230000001A', cache)
+                patents.fetch('KR20230000001A', cache, opener=lambda *a, **k: (_ for _ in ()).throw(OSError('연결 실패')), min_interval=0)
             self.assertEqual(c.exception.code, 'network')
         for number in ['KR1234/', 'KR1234//5678A', 'KR1234/5/6A']:
             with self.assertRaises(patents.PatentError):
@@ -127,3 +130,37 @@ class PatentTest(unittest.TestCase):
             with self.assertRaises(patents.PatentError) as c:
                 patents.fetch('KR20230000002A', Path(folder), lambda req, timeout: Response(page('KR20230000002B1'), req.full_url), min_interval=0)
             self.assertIn('KR20230000002B1', c.exception.message)
+
+    def test_untrusted_cache_refetched(self):
+        number='KR20230000001A'
+        for mode in ('missing_index','broken_index','changed','missing_file'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory(dir=Path(__file__).parent) as td:
+                folder=Path(td)
+                doc=patents.from_text('[0001] 심은 글',number,'2020-01-01')
+                write_doc(folder,doc)
+                path=folder/(number+'.json')
+                if mode=='missing_index': (folder/'.index.json').unlink()
+                elif mode=='broken_index': (folder/'.index.json').write_text('{')
+                elif mode=='changed': path.write_bytes(path.read_bytes()+b' ')
+                else: path.unlink()
+                with patch('lib.patents.build_opener') as opening:
+                    opening.return_value.open.side_effect=lambda req,timeout: Response(page(),req.full_url)
+                    result=patents.fetch(number,folder,min_interval=0)
+                opening.return_value.open.assert_called_once()
+                self.assertNotEqual(result['paragraphs'][0]['text'],'심은 글')
+                index=json.loads((folder/'.index.json').read_bytes())
+                self.assertEqual(index[number],hashlib.sha256(path.read_bytes()).hexdigest())
+
+    def test_hash_and_parse_use_same_bytes(self):
+        number='KR20230000001A'
+        with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as td:
+            folder=Path(td)
+            doc=patents.from_text('[0001] 받은 글',number,'2020-01-01')
+            write_doc(folder,doc)
+            index=json.loads((folder/'.index.json').read_bytes())
+            def change_after_read(cache_dir):
+                (folder/(number+'.json')).write_bytes(b'{')
+                return index
+            with patch('lib.patents._index',side_effect=change_after_read):
+                self.assertEqual(patents.read_document(folder,number),doc)
+            self.assertIsNone(patents.read_document(folder,number))

@@ -265,3 +265,32 @@ class MaintenanceTest(unittest.TestCase):
             self.assertIn('이전 사유',reasons)
             self.assertGreater(len(reasons),1)
             self.assertEqual(len(reasons),len(set(reasons)))
+
+    def test_changed_receive_recovery_and_failure(self):
+        from lib import patents
+        from tests.doc_helper import write_doc
+        from tests.test_patents import Response, page
+        doc = json.loads((ROOT/'tests/example/publication.json').read_bytes())
+        with tempfile.TemporaryDirectory(dir=ROOT/'tests') as td:
+            folder=Path(td)
+            s=state.new_case('test',public_confirmed=True,application_date='2025-01-01')
+            c=work.candidate(doc['doc_id'])
+            s['candidates']=[c]
+            write_doc(folder/'docs',doc)
+            work.receive(folder,s,c)
+            self.assertEqual(c['status'],'accepted')
+            path=folder/'docs'/(doc['doc_id']+'.json')
+            path.write_bytes(b'{')
+            self.assertEqual(work.docs_for(folder,s),{})
+            self.assertEqual(c['excluded_code'],'changed')
+            with patch('lib.patents.build_opener') as opening:
+                opening.return_value.open.side_effect=OSError('연결 실패')
+                work.receive(folder,s,c)
+                opening.return_value.open.assert_called_once()
+            self.assertEqual((c['status'],c['excluded_code']),('pending','network'))
+            with patch('lib.patents.build_opener') as opening, patch('lib.patents.time.sleep'):
+                opening.return_value.open.side_effect=lambda req,timeout: Response(page(doc['doc_id']),req.full_url)
+                work.receive(folder,s,c)
+                opening.return_value.open.assert_called_once()
+            self.assertEqual(c['status'],'accepted')
+            self.assertEqual(work.docs_for(folder,s)[doc['doc_id']],patents.read_document(folder/'docs',doc['doc_id']))

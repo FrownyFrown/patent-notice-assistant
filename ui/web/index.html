@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>특허 검토 초안</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">본문 건너뛰기</a>
+<header><h1>특허 검토 초안</h1><p>비공식 보조 도구</p></header>
+<p id="draft" class="draft">초안, 담당자 확인 필요</p>
+<div class="toolbar">
+<label for="cases">사건 고르기</label><select id="cases"><option value="">읽는 중</option></select>
+<label for="upload">파일 올리기</label><input id="upload" type="file" accept=".pdf,.txt">
+<progress id="upload-progress" max="100" value="0" hidden aria-label="파일 전송 진행"></progress>
+<p id="upload-result" role="status"></p>
+</div>
+<p id="status" role="status">읽는 중입니다</p>
+<div class="layout">
+<main id="main" tabindex="-1">
+<div id="case-content" hidden>
+<nav aria-label="화면 안 이동"><ul class="jump">
+<li><a href="#claims">청구항</a></li><li><a href="#matrix">대조표</a></li><li><a href="#candidates">후보 문헌</a></li><li><a href="#verification">원문 대조</a></li><li><a href="#conclusions">결론</a></li><li><a href="#notice">통지서</a></li><li><a href="#review">담당자 확인</a></li>
+</ul></nav>
+<section aria-labelledby="steps-title"><h2 id="steps-title">진행</h2><ol id="steps"></ol></section>
+<section id="next"></section>
+<section id="summary"></section>
+<section id="claims"></section>
+<section id="matrix"></section>
+<section id="gaps"></section>
+<section id="candidates"></section>
+<section id="verification"></section>
+<section id="conclusions"></section>
+<section id="references"></section>
+<section id="checklist"></section>
+<section id="notes"></section>
+<section id="notice" aria-labelledby="notice-title"><h2 id="notice-title">통지서</h2>
+<p id="notice-status"></p><a id="download" class="primary" hidden>통지서 내려받기</a>
+<iframe id="preview" title="통지서 초안 미리보기" sandbox="" hidden></iframe>
+</section>
+</div>
+</main>
+<aside aria-label="담당자 확인과 채팅">
+<section id="review"><h2>담당자 확인</h2><p>사건을 고르세요</p></section>
+<section aria-labelledby="chat-title"><h2 id="chat-title">채팅</h2>
+<p id="chat-status" role="status">읽는 중입니다</p>
+<div id="chat-disabled" hidden><p>Codex 채팅에서 말해 주세요</p><div id="prompts"></div></div>
+<div id="chat-enabled" hidden>
+<div id="messages" role="log" aria-label="대화"></div>
+<label for="chat-text">보낼 글</label><textarea id="chat-text" rows="4"></textarea>
+<p id="chat-count">0 / 4000자</p><button id="send" type="button">보내기</button>
+<p>Enter 전송, Shift+Enter 줄바꿈</p>
+</div>
+<p>삭제, 공개, 발송 승인은 이 채팅으로 받지 않습니다</p>
+</section>
+</aside>
+</div>
+</body>
+</html>

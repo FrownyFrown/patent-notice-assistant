@@ -1,4 +1,6 @@
 import copy
+import hashlib
+from tests.doc_helper import write_doc
 import json
 import os
 from pathlib import Path
@@ -59,7 +61,7 @@ class WorkTest(unittest.TestCase):
         doc=json.loads((ROOT/'tests/example/publication.json').read_text())
         dest=self.folder()/'docs'
         dest.mkdir(exist_ok=True)
-        (dest/(doc['doc_id']+'.json')).write_text(json.dumps(doc,ensure_ascii=False))
+        write_doc(dest, doc)
         return doc
 
     def search(self,doc):
@@ -136,7 +138,7 @@ class WorkTest(unittest.TestCase):
     def test_dates_self_and_reset(self):
         doc=self.prepare()
         newer=dict(doc,doc_id='KR20260000002A',publication_date='2026-02-01')
-        (self.folder()/'docs'/ (newer['doc_id']+'.json')).write_text(json.dumps(newer))
+        write_doc(self.folder()/'docs', newer)
         candidates=[dict(doc_id=d,title='',reason='',origin='manual') for d in [doc['doc_id'],newer['doc_id'],'KR20260000009A']]
         self.submit('search',dict(search_calls=1,candidates=candidates))
         codes={c['doc_id']:c['excluded_code'] for c in self.state()['candidates']}
@@ -197,13 +199,21 @@ class WorkTest(unittest.TestCase):
         call('input/full.pdf',0)
         c=self.state()['candidates'][-1]
         self.assertEqual((c['origin'],c['status']),('user_pdf','accepted'))
+        dest=self.folder()/'docs'
+        index=json.loads((dest/'.index.json').read_bytes())
+        self.assertEqual(index[c['doc_id']],hashlib.sha256((dest/(c['doc_id']+'.json')).read_bytes()).hexdigest())
+        (dest/(c['doc_id']+'.json')).write_bytes(b'{')
+        self.run_work('verify')
+        self.assertEqual(self.state()['candidates'][-1]['excluded_code'],'changed')
+        call('input/full.pdf',0)
+        self.assertEqual(self.state()['candidates'][-1]['status'],'accepted')
 
     def test_build_rechecks_changed_document_date(self):
         doc=self.prepare(); self.search(doc)
         self.submit('compare',self.matrix(doc))
         self.submit('judge',self.judge(doc))
         doc['publication_date']='2026-01-01'
-        (self.folder()/'docs'/(doc['doc_id']+'.json')).write_text(json.dumps(doc))
+        write_doc(self.folder()/'docs', doc)
         self.run_work('build')
         state=self.state()
         self.assertEqual(state['candidates'][0]['excluded_code'],'not_prior')
@@ -223,7 +233,7 @@ class WorkTest(unittest.TestCase):
     def test_combined_small_docs_and_quiet(self):
         doc=self.prepare()
         other=dict(doc,doc_id='KR20180000002A')
-        (self.folder()/'docs'/(other['doc_id']+'.json')).write_text(json.dumps(other))
+        write_doc(self.folder()/'docs', other)
         self.submit('search',dict(search_calls=1,candidates=[dict(doc_id=d['doc_id'],title='',reason='',origin='manual') for d in (doc,other)]))
         quiet=self.run_work('next','--quiet')
         self.assertNotIn('구분자 사이',quiet)
@@ -280,3 +290,99 @@ class WorkTest(unittest.TestCase):
         self.assertIn('맞는지 확인',out)
         self.assertEqual(self.state()['input']['basis_source'],'application')
         self.assertTrue(self.state()['input']['application_date'])
+
+    def test_changed_verify_and_build(self):
+        doc=self.prepare(); self.search(doc)
+        self.submit('compare',self.matrix(doc))
+        self.submit('judge',self.judge(doc))
+        path=self.folder()/'docs'/(doc['doc_id']+'.json')
+        state_path=self.folder()/'state.json'
+        original_state=state_path.read_bytes()
+        for command in ('build', 'verify'):
+            for mode in ('bytes', 'missing_file', 'missing_index', 'broken_index'):
+                with self.subTest(command=command,mode=mode):
+                    state_path.write_bytes(original_state)
+                    index=path.parent/'.index.json'
+                    index.unlink(missing_ok=True)
+                    write_doc(path.parent,doc)
+                    if mode=='bytes': path.write_bytes(b'{')
+                    elif mode=='missing_file': path.unlink()
+                    elif mode=='missing_index': index.unlink()
+                    else: index.write_bytes(b'{')
+                    self.run_work(command)
+                    state=self.state()
+                    self.assertEqual(state['candidates'][0]['excluded_code'],'changed')
+                    self.assertEqual(state['candidates'][0]['excluded_reason'],'저장된 공보가 받은 뒤에 바뀌었습니다')
+                    self.assertEqual(state['conclusions'][0]['verdict'],'hold')
+                    self.assertEqual(state['references'],[])
+                    self.assertEqual(state['matrix'][0]['passages'],[])
+                    self.assertEqual(state['conclusions'][0]['sentences'],[])
+                    if command=='build':
+                        html=(self.folder()/'out/notice.html').read_text(encoding='utf-8')
+                        reasons=html.split('<h2>구체적 거절이유</h2>')[1].split('</section>')[0]
+                        refs=html.split('<h2>인용발명 목록</h2>')[1].split('</section>')[0]
+                        self.assertNotIn(doc['paragraphs'][0]['text'],reasons)
+                        self.assertNotIn(doc['doc_id'],refs)
+
+    def test_changed_not_revived_by_set(self):
+        doc=self.prepare(); self.search(doc)
+        path=self.folder()/'docs'/(doc['doc_id']+'.json')
+        original=path.read_bytes()
+        path.write_bytes(b'{')
+        self.run_work('set','basis-date','2024-01-01')
+        self.assertEqual(self.state()['candidates'][0]['excluded_code'],'changed')
+        path.write_bytes(original)
+        self.run_work('set','publication-number','KR20260000008A')
+        self.assertEqual(self.state()['candidates'][0]['excluded_code'],'changed')
+        self.run_work('fetch',doc['doc_id'])
+        self.assertEqual(self.state()['candidates'][0]['status'],'accepted')
+
+    def test_changed_after_build_marks_notice_stale_once(self):
+        doc=self.prepare(); self.search(doc)
+        self.submit('compare',self.matrix(doc)); self.submit('judge',self.judge(doc)); self.run_work('build')
+        (self.folder()/'docs'/(doc['doc_id']+'.json')).write_bytes(b'{')
+        self.run_work('next')
+        self.assertTrue(all(a['stale'] for a in self.state()['artifacts']))
+        write_doc(self.folder()/'docs',doc)
+        self.assertEqual(self.state()['candidates'][0]['excluded_code'],'changed')
+
+    def test_verify_after_rebuild_keeps_notice(self):
+        doc=self.prepare(); self.search(doc)
+        self.submit('compare',self.matrix(doc)); self.submit('judge',self.judge(doc))
+        (self.folder()/'docs'/(doc['doc_id']+'.json')).write_bytes(b'{')
+        self.run_work('build')
+        self.run_work('verify')
+        self.assertFalse(any(a['stale'] for a in self.state()['artifacts']))
+
+    def test_unreceived_self_keeps_reason_after_set(self):
+        self.start(); self.run_work('next'); self.submit('components',self.component())
+        self.submit('search',dict(search_calls=1,candidates=[dict(doc_id='KR20260000009A',title='',reason='',origin='manual')]))
+        self.run_work('set','basis-date','2024-01-01')
+        self.assertEqual(self.state()['candidates'][0]['excluded_code'],'self')
+
+    def test_changed_read_commands(self):
+        doc=self.prepare(); self.search(doc)
+        path=self.folder()/'docs'/(doc['doc_id']+'.json')
+        for command in [('next',), ('rank',), ('paragraphs',doc['doc_id'],'--all')]:
+            with self.subTest(command=command):
+                write_doc(path.parent,doc)
+                self.run_work('fetch',doc['doc_id'])
+                path.write_text('{"paragraphs": "변조 공보 표식"}',encoding='utf-8')
+                out=self.run_work(*command,code=1 if command[0]=='paragraphs' else 0)
+                self.assertNotIn('변조 공보 표식',out)
+                self.assertEqual(self.state()['candidates'][0]['excluded_code'],'changed')
+
+    def test_by_user_stays_excluded(self):
+        doc=self.prepare(); self.search(doc)
+        self.run_work('exclude',doc['doc_id'],'담당자 제외')
+        (self.folder()/'docs'/(doc['doc_id']+'.json')).write_bytes(b'{')
+        self.run_work('set','basis-date','2024-01-01')
+        self.run_work('set','publication-number','KR20260000008A')
+        self.run_work('verify')
+        self.assertEqual(self.state()['candidates'][0]['excluded_code'],'by_user')
+
+    def test_changed_compare_rejected_and_saved(self):
+        doc=self.prepare(); self.search(doc)
+        (self.folder()/'docs'/(doc['doc_id']+'.json')).write_bytes(b'{')
+        self.submit('compare',self.matrix(doc),code=2)
+        self.assertEqual(self.state()['candidates'][0]['excluded_code'],'changed')

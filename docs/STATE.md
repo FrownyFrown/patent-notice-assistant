@@ -9,6 +9,7 @@ cases/<case_id>/state.json      work.py 만 쓴다. 화면은 읽기만
 cases/<case_id>/review.json     화면만 쓴다. 사용자 확인 체크. work.py 는 읽기만
 cases/<case_id>/source.txt      추출한 본원 글 (UTF-8)
 cases/<case_id>/docs/<doc_id>.json   받은 공보의 전체 단락 (원문 펼침에서 더 볼 때)
+cases/<case_id>/docs/.index.json   받은 공보 파일 바이트의 SHA-256 목록
 cases/<case_id>/work/           작업지(step-2.md 등)와 Codex 가 쓴 JSON
 cases/<case_id>/out/            notice.docx, notice.html
 ```
@@ -115,7 +116,7 @@ stale     앞 단계를 다시 해서 낡음
 `{doc_id, title, publication_date, url, origin, reason, round, status, excluded_code, excluded_reason, paragraph_count, numbered, machine_translated}`
 - `origin`: `web_search` | `user_pdf` | `search_report` | `manual`. `round`: 1(검색) 또는 2(빈칸 검색).
 - `status`: `pending`(아직 안 받음) | `accepted` | `excluded`.
-- `excluded_code`: `""` | `not_found` | `network` | `not_prior` | `no_date` | `no_text` | `self` | `bad_number` | `number_mismatch` | `by_user`. 사람이 읽을 사유는 `excluded_reason`.
+- `excluded_code`: `""` | `not_found` | `network` | `not_prior` | `no_date` | `no_text` | `self` | `bad_number` | `number_mismatch` | `changed` | `by_user`. 사람이 읽을 사유는 `excluded_reason`.
 
 ## 9 matrix
 구성요소와 문헌의 짝마다 하나. `{component_id, doc_id, verdict, paragraphs, quote, check, check_message, note, passages}`

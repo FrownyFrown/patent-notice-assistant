@@ -9,12 +9,13 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class PackagingTest(unittest.TestCase):
     def test_required_files(self):
-        for name in ['AGENTS.md','.agents/skills/patent-notice/SKILL.md','setup.bat','setup.command','.gitignore','.gitattributes','input/.gitkeep']:
+        for name in ['AGENTS.md','.agents/skills/patent-notice/SKILL.md','setup.bat','setup.command','.gitignore','.gitattributes','input/.gitkeep','open-ui.bat','open-ui.command','ui/server.py','ui/web/index.html','ui/web/app.js','ui/web/style.css']:
             self.assertTrue((ROOT/name).is_file(),name)
         self.assertLessEqual(len((ROOT/'AGENTS.md').read_text().splitlines()),60)
 
     def test_text_policy(self):
         paths=list((ROOT/'scripts').rglob('*.py'))+list((ROOT/'tests').glob('test_*.py'))+list((ROOT/'schemas').glob('*.json'))+list((ROOT/'references').glob('*.md'))+list((ROOT/'tests/example').glob('*.*'))+[ROOT/'AGENTS.md',ROOT/'setup.bat',ROOT/'setup.command']
+        paths += [ROOT/'open-ui.bat', ROOT/'open-ui.command'] + list((ROOT/'ui').rglob('*.py')) + list((ROOT/'ui/web').glob('*'))
         skill=ROOT/'.agents/skills/patent-notice/SKILL.md'
         if skill.exists(): paths.append(skill)
         banned=[chr(0x00B7),chr(0x2013),chr(0x2014),'\uac00\uc871','\uc544\ubc84\uc9c0','\uc2ec\uc0ac\uad00','\x2fUsers\x2f','message'+'_id']
@@ -31,6 +32,13 @@ class PackagingTest(unittest.TestCase):
         self.assertNotIn(b'\n',bat.replace(b'\r\n',b''))
         self.assertNotIn(b'\r',(ROOT/'setup.command').read_bytes())
         self.assertTrue(os.access(ROOT/'setup.command',os.X_OK))
+
+    def test_ui_start_files(self):
+        bat = (ROOT/'open-ui.bat').read_bytes()
+        self.assertIn(b'\r\n', bat)
+        self.assertNotIn(b'\n', bat.replace(b'\r\n', b''))
+        self.assertNotIn(b'\r', (ROOT/'open-ui.command').read_bytes())
+        self.assertTrue(os.access(ROOT/'open-ui.command', os.X_OK))
 
     def test_schema_rules(self):
         def walk(node):
